@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>OromNet Voice AI - TTS</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { -webkit-tap-highlight-color: transparent; }
+    .glass { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.1); }
+    .loader { border: 3px solid rgba(255, 255, 255, 0.2); border-top: 3px solid #fff; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .fade-in { animation: fadeIn 0.5s ease-out forwards; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    select option { background-color: #0f172a; color: #e2e8f0; }
+  </style>
+</head>
+<body class="bg-slate-950 text-white font-sans min-h-screen flex flex-col items-center justify-start p-4 md:p-8 overflow-x-hidden">
+  
+  <!-- Background Glow -->
+  <div class="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+    <div class="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-indigo-600/20 rounded-full blur-[100px]"></div>
+    <div class="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-purple-600/20 rounded-full blur-[100px]"></div>
+  </div>
+
+  <main class="relative z-10 w-full max-w-2xl glass rounded-3xl p-6 md:p-8 shadow-2xl mt-8">
+    
+    <!-- Header -->
+    <header class="text-center mb-8">
+      <h1 class="text-3xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">OromNet Voice AI</h1>
+      <p class="text-slate-400 text-sm mt-2">English & Afaan Oromo Text-to-Speech</p>
+    </header>
+
+    <!-- API Key Input (Securely handled in UI so you don't have to edit code on your phone later) -->
+    <div class="mb-6 fade-in">
+      <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Google AI Studio API Key</label>
+      <input type="password" id="apiKey" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 transition" placeholder="Paste your API key here (stored locally in browser)">
+      <p class="text-[10px] text-slate-500 mt-1">Your key is saved only in your phone's browser memory.</p>
+    </div>
+
+    <!-- Text Input -->
+    <div class="mb-6">
+      <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Enter Text</label>
+      <textarea id="textInput" rows="5" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-base focus:outline-none focus:border-indigo-500 transition resize-none" placeholder="Nagaa kee! Type your text here..."></textarea>
+    </div>
+
+    <!-- Controls -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <div>
+        <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Language</label>
+        <select id="langSelect" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-base focus:outline-none focus:border-indigo-500 transition appearance-none">
+          <option value="en-US">English (US)</option>
+          <option value="om">Afaan Oromo</option>
+        </select>
+      </div>
+      <button id="generateBtn" class="w-full bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-900/50">
+        <span id="btnText">Generate Speech</span>
+        <div id="spinner" class="loader hidden"></div>
+      </button>
+    </div>
+
+    <!-- Error Box -->
+    <div id="errorBox" class="hidden mb-6 p-4 bg-red-900/20 border border-red-500/30 text-red-300 rounded-xl text-sm fade-in"></div>
+
+    <!-- Audio Player -->
+    <div id="audioSection" class="hidden fade-in">
+      <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Generated Audio</label>
+      <div class="bg-slate-900/80 p-4 rounded-2xl border border-slate-800 flex flex-col gap-4">
+        <audio id="audioPlayer" controls class="w-full h-12 rounded-lg"></audio>
+        <button id="downloadBtn" class="w-full bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold py-3 rounded-xl transition flex items-center justify-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+          Download Audio
+        </button>
+      </div>
+    </div>
+
+  </main>
+
+  <script type="module">
+    import { GoogleGenAI } from "https://esm.run/@google/genai";
+
+    // DOM Elements
+    const apiKeyInput = document.getElementById('apiKey');
+    const textInput = document.getElementById('textInput');
+    const langSelect = document.getElementById('langSelect');
+    const generateBtn = document.getElementById('generateBtn');
+    const btnText = document.getElementById('btnText');
+    const spinner = document.getElementById('spinner');
+    const errorBox = document.getElementById('errorBox');
+    const audioSection = document.getElementById('audioSection');
+    const audioPlayer = document.getElementById('audioPlayer');
+    const downloadBtn = document.getElementById('downloadBtn');
+
+    // Load saved API key from phone's local storage so you don't have to paste it every time
+    const savedKey = localStorage.getItem('gemini_api_key');
+    if (savedKey) apiKeyInput.value = savedKey;
+    
+    apiKeyInput.addEventListener('change', () => {
+      localStorage.setItem('gemini_api_key', apiKeyInput.value);
+    });
+
+    // Generate Function
+    generateBtn.addEventListener('click', async () => {
+      const apiKey = apiKeyInput.value.trim();
+      const text = textInput.value.trim();
+      const lang = langSelect.value;
+      const langName = lang === 'om' ? 'Afaan Oromo' : 'English';
+
+      // Reset UI
+      errorBox.classList.add('hidden');
+      audioSection.classList.add('hidden');
+
+      if (!apiKey) return showError('Please paste your Google AI Studio API key.');
+      if (!text) return showError('Please enter some text to speak.');
+
+      // Loading State
+      generateBtn.disabled = true;
+      generateBtn.classList.add('opacity-70', 'cursor-not-allowed');
+      btnText.textContent = 'Generating...';
+      spinner.classList.remove('hidden');
+
+      try {
+        const ai = new GoogleGenAI({ apiKey });
+        
+        const prompt = `Read the following text clearly and naturally in ${langName} (language code: ${lang}). Do not add any conversational filler, just read the text exactly as written:\n\n${text}`;
+
+        const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash-preview-tts",
+          contents: [{ parts: [{ text: prompt }] }],
+          config: {
+            responseModalities: ["AUDIO"],
+          },
+        });
+
+        const audioBase64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        
+        if (!audioBase64) throw new Error('No audio returned. Google might be experiencing high traffic.');
+
+        // Create Audio URL
+        const audioUrl = `data:audio/wav;base64,${audioBase64}`;
+        audioPlayer.src = audioUrl;
+        
+        // Setup Download
+        downloadBtn.onclick = () => {
+          const a = document.createElement('a');
+          a.href = audioUrl;
+          a.download = `oromnet_tts_${lang}_${Date.now()}.wav`;
+          a.click();
+        };
+
+        audioSection.classList.remove('hidden');
+        audioPlayer.play();
+
+      } catch (err) {
+        console.error(err);
+        if (err.message.includes('language') || err.message.includes('om')) {
+          showError(`Afaan Oromo native voice might not be fully supported by Google's current TTS preview model yet. Try English, or the AI will attempt to read it with an accent.`);
+        } else {
+          showError(`Error: ${err.message || 'Failed to generate audio. Check your API key.'}`);
+        }
+      } finally {
+        generateBtn.disabled = false;
+        generateBtn.classList.remove('opacity-70', 'cursor-not-allowed');
+        btnText.textContent = 'Generate Speech';
+        spinner.classList.add('hidden');
+      }
+    });
+
+    function showError(msg) {
+      errorBox.textContent = msg;
+      errorBox.classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>
+
+
